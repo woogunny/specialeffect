@@ -1,0 +1,151 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from cv2 import cvtColor
+
+rate = 10 # 모자이크에 사용할 축소 비율 (1/rate)
+win_title = 'mosaic' # 창 제목
+img = cv2.imread('pocket.png') # 이미지 읽기
+while True:
+	x,y,w,h = cv2.selectROI(win_title, img, False) # 관심영역 선택
+	if w and h:
+		roi = img[y:y+h, x:x+w] # 관심영역 지정
+		roi = cv2.resize(roi, (w//rate, h//rate)) # 1/rate 비율로 축소
+		# 원래 크기로 확대
+		roi = cv2.resize(roi, (w,h), interpolation=cv2.INTER_AREA)
+		img[y:y+h, x:x+w] = roi # 원본 이미지에 적용
+		cv2.imshow(win_title, img)
+	else:
+		break
+cv2.destroyAllWindows()
+
+
+l = 20 # 파장(wave length)
+amp = 15 # 진폭(amplitude)
+img = cv2.imread('a0.png', 1)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+rows, cols = img.shape[:2]
+# 초기 매핑 배열 생성
+mapy, mapx = np.indices((rows, cols),dtype=np.float32)
+# sin, cos 함수를 적용한 변형 매핑 연산
+sinx = mapx + amp * np.sin(mapy/l)
+cosy = mapy + amp * np.cos(mapx/l)
+# 영상 매핑
+img_sinx=cv2.remap(img, sinx, mapy, cv2.INTER_LINEAR) # x축만 sin 곡선 적용
+img_cosy=cv2.remap(img, mapx, cosy, cv2.INTER_LINEAR) # y축만 cos 곡선 적용
+# x,y 축 모두 sin, cos 곡선 적용 및 외곽 영역 보정
+img_both=cv2.remap(img, sinx, cosy, cv2.INTER_LINEAR, None, cv2.BORDER_REPLICATE)
+merge = np.hstack([img, img_both])
+merge2 = np.hstack([img_sinx, img_cosy])
+merge3 = np.vstack([merge, merge2])
+plt.figure(figsize=(12,6))
+plt.imshow(merge3)
+plt.show()
+
+img = img_sinx
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+rows, cols = img.shape[:2]
+# 설정 값 셋팅
+exp = 2.1 # 볼록, 오목 지수 (오목 : 0.1 ~ 1, 볼록 : 1.1~)
+scale = 1 # 변환 영역 크기 (0 ~ 1)
+# 매핑 배열 생성
+mapy, mapx = np.indices((rows, cols),dtype=np.float32)
+# 좌상단 기준좌표에서-1~1로 정규화된 중심점 기준 좌표로 변경
+mapx = 2*mapx/(cols-1)-1
+mapy = 2*mapy/(rows-1)-1
+# 직교좌표를 극 좌표로 변환
+r, theta = cv2.cartToPolar(mapx, mapy)
+# 왜곡 영역만 중심확대/축소 지수 적용
+r[r< scale] = r[r<scale] **exp
+# 극 좌표를 직교좌표로 변환
+mapx, mapy = cv2.polarToCart(r, theta)
+# 중심점 기준에서 좌상단 기준으로 변경
+mapx = ((mapx + 1)*cols-1)/2
+mapy = ((mapy + 1)*rows-1)/2
+# 재매핑 변환
+distorted = cv2.remap(img,mapx,mapy,cv2.INTER_LINEAR)
+merge = np.hstack([img, distorted])
+plt.figure(figsize=(12,6))
+plt.imshow(merge)
+plt.show()
+
+
+def apply_vintage_effect(img_path):
+	# 이미지 불러오기
+	img = cv2.imread(img_path)
+	img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+	# 빈티지 효과를 위한 색상 오버레이 생성
+	overlay = np.full(img.shape, (50, 25, 0), dtype=np.uint8)
+	# 오버레이와 원본 이미지 합성
+	vintage_img = cv2.addWeighted(img, 0.9, overlay, 0.1, 0)
+	vintage_img_rgb = cv2.cvtColor(vintage_img, cv2.COLOR_BGR2RGB)
+	# 결과 이미지 표시
+	plt.figure(figsize=(12, 6))
+	plt.subplot(1, 2, 1)
+	plt.imshow(img_rgb)
+	plt.title('Original Image')
+	plt.axis('off')
+	plt.subplot(1, 2, 2)
+	plt.imshow(vintage_img_rgb)
+	plt.title('Vintage Effect')
+	plt.axis('off')
+	plt.show()
+# 이미지 경로 설정
+apply_vintage_effect('a2.png')
+
+
+def apply_tilt_shift(img_path):
+	# 이미지 불러오기
+	img = cv2.imread(img_path)
+	img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+	# 이미지 크기
+	height, width = img.shape[:2]
+	# 초점 영역과 흐림 정도 설정
+	focus_area = int(height * 0.3)
+	blur_strength = 15
+	# 마스크 생성
+	mask = np.zeros((height, width, 3), dtype=np.uint8)
+	mask[int(height/2 - focus_area/2):int(height/2 + focus_area/1.5), int(width/2 - focus_area/2):int(width/2 + focus_area/1.5)] = 255
+	# 원본 이미지에 블러 효과 적용
+	blurred = cv2.GaussianBlur(img, (blur_strength, blur_strength), 0)
+	# 마스크를 사용하여 블러 이미지와 원본 이미지 합성
+	tilt_shift = np.where(mask==np.array([255, 255, 255]), img, blurred)
+	tilt_shift_rgb = cv2.cvtColor(tilt_shift, cv2.COLOR_BGR2RGB)
+	# 결과 이미지 표시
+	plt.figure(figsize=(12, 6))
+	plt.subplot(1, 2, 1)
+	plt.imshow(img_rgb)
+	plt.title('Original Image')
+	plt.axis('off')
+	plt.subplot(1, 2, 2)
+	plt.imshow(tilt_shift_rgb)
+	plt.title('Tilt-Shift Effect')
+	plt.axis('off')
+	plt.show()
+# 이미지 경로 설정
+apply_tilt_shift('a3.png')
+
+
+# 이미지 불러오기
+img = cv2.imread('a4.png')
+img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+# 이미지를 회색조로 변환
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+# 밝은 영역만 추출하기 위한 임계값 설정
+_, thresholded = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
+# 추출된 밝은 영역에 블러 효과 적용
+blurred = cv2.GaussianBlur(thresholded, (15, 15), 0)
+# 원본 이미지와 블러 처리된 이미지 합성
+glow_effect = cv2.addWeighted(img, 1, cv2.cvtColor(blurred, cv2.COLOR_GRAY2BGR), 0.5, 0)
+glow_effect_rgb = cv2.cvtColor(glow_effect, cv2.COLOR_BGR2RGB)
+# 결과 이미지 표시
+plt.figure(figsize=(12, 6))
+plt.subplot(1, 2, 1)
+plt.imshow(img_rgb)
+plt.title('Original Image')
+plt.axis('off')
+plt.subplot(1, 2, 2)
+plt.imshow(glow_effect_rgb)
+plt.title('Glow Effect')
+plt.axis('off')
+plt.show()
